@@ -45,45 +45,36 @@ namespace FunctionApp2
 
                 if (compra != null)
                 {
+                    
+                    // verificar se possui saldo e se quantidade* preco menor que saldo
                     if (compra.Carteira.Saldo > 0 && compra.Carteira.Saldo >= compra.Quantidade * compra.Acao.Valor)
                     {
                         Decimal valorTotalCompra = Convert.ToDecimal(compra.Quantidade * compra.Acao.Valor);
                         DeduzirSaldoCarteira(compra.Carteira.Id, valorTotalCompra);
                     }
 
-                    //regras:
-                    // verificar se possui saldo
-                    // verificar se quantidade* preco menor que saldo
-                    // 
-                    // deduzir o saldo da carteira
-                    // update Carteira set Saldo -= @quantidade * @valor where idCarteira = @idCarteira
-
                     //verificar se a acao está na lista de ativos da carteira
+                    var ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
+                    int? quantidade = compra?.Quantidade;
 
+                    // TODO: codigo comentado apenas de teste para validar a inserção "InserirAtivoCarteira".
+                    // if (ativoCarteira?.Id == 8) 
+                    // {
+                    //     DeletarAtivoCarteiraParaTeste(ativoCarteira.Id);
+                    //     ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
+                    // }
 
-                    // update Ativos set quantidade += @quantidade, dataCompra = getdate() where id = @id
-                    // 
-                    // insert into Ativos(idCateira, quantidade, dataCompra, acaoId) values(@idCarteira, @quantidade, getdate(), @acaoId)
-
-
-                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    if (ativoCarteira != null)
                     {
-                        string sql = "SELECT * FROM Usuario;";
-                        using (SqlCommand command = new SqlCommand(sql, connection))
-                        {
-                            connection.Open();
-                            using (SqlDataReader reader = command.ExecuteReader())
-                            {
-                                while (reader.Read())
-                                {
-                                    // Processar os resultados aqui
-                                    var nome = reader["Nome"];
-
-                                    _logger.LogInformation("Nome: {nome}", nome);
-                                }
-                            }
-                        }
+                        AtualizarAtivoCarteira(ativoCarteira.Id, quantidade.HasValue ? quantidade.Value : 0);
                     }
+                    else 
+                    {
+                        int? idAcao = compra?.Acao?.Id;
+                        int? idCarteira = compra?.Carteira?.Id;
+
+                        InserirAtivoCarteira(idCarteira.HasValue ? idCarteira.Value : 0, idAcao.HasValue ? idAcao.Value : 0, quantidade.HasValue ? quantidade.Value : 0);
+                    }                    
                 }
             }
             else
@@ -92,6 +83,100 @@ namespace FunctionApp2
                 await messageActions.CompleteMessageAsync(message);
             }
 
+        }
+
+        private void DeletarAtivoCarteiraParaTeste(int idAtivoCarteira)
+        {
+            try
+            {
+                string sqlDeletar = "delete from Ativos where id = @idAtivoCarteira;";
+                using (SqlConnection cnnDeletar = new SqlConnection(connectionString))
+                {
+                    using (SqlCommand cmdUpdate = new SqlCommand(sqlDeletar, cnnDeletar))
+                    {
+
+                        cmdUpdate.Parameters.AddWithValue("@idAtivoCarteira", idAtivoCarteira);
+
+                        cnnDeletar.Open();
+                        cmdUpdate.ExecuteNonQuery();
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        private void AtualizarAtivoCarteira(int idAtivo, int quantidadeCompra)
+        {
+            // update Ativos set quantidade += @quantidade, dataCompra = getdate() where id = @id
+            try
+            {
+                Int32 quantidadeExistente = 0;
+                string sqlConsulta = "select Quantidade from Ativos where id = @idAtivo;";
+                using (SqlConnection cnnConsulta = new SqlConnection(connectionString))
+                {
+                    using (SqlCommand cmdConsulta = new SqlCommand(sqlConsulta, cnnConsulta))
+                    {
+                        cmdConsulta.Parameters.AddWithValue("@idAtivo", idAtivo);
+                        cnnConsulta.Open();
+                        var reader = cmdConsulta.ExecuteReader();
+                        reader.Read();
+                        quantidadeExistente = reader.GetInt32("quantidade");
+                        reader.Close();
+                    }
+                }
+                var novaQuantidade = quantidadeExistente + quantidadeCompra;
+
+                string sqlUpdate = "update Ativos set Quantidade = @novaQuantidade where id = @idAtivo;";
+                using (SqlConnection cnnUpdate = new SqlConnection(connectionString))
+                {
+                    using (SqlCommand cmdUpdate = new SqlCommand(sqlUpdate, cnnUpdate))
+                    {
+
+                        cmdUpdate.Parameters.AddWithValue("@idAtivo", idAtivo);
+                        cmdUpdate.Parameters.AddWithValue("@novaQuantidade", novaQuantidade);
+
+                        cnnUpdate.Open();
+                        cmdUpdate.ExecuteNonQuery();
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        private void InserirAtivoCarteira(int idCarteira, int idAcao, int quantidade)
+        {
+            // insert into Ativos(idCateira, quantidade, dataCompra, acaoId) values(@idCarteira, @quantidade, getdate(), @acaoId)
+            try
+            {
+                string sqlInsert = "insert into Ativos (IdCarteira, IdAcao, Quantidade, DataCompra) values (@idCarteira, @idAcao, @quantidade, @dataCompra);";
+                using (SqlConnection cnnInsert = new SqlConnection(connectionString))
+                {
+                    using (SqlCommand cmdInsert = new SqlCommand(sqlInsert, cnnInsert))
+                    {
+
+                        cmdInsert.Parameters.AddWithValue("@idCarteira", idCarteira);
+                        cmdInsert.Parameters.AddWithValue("@idAcao", idAcao);
+                        cmdInsert.Parameters.AddWithValue("@quantidade", quantidade);
+                        cmdInsert.Parameters.AddWithValue("@dataCompra", DateTime.Now);
+
+                        cnnInsert.Open();
+                        cmdInsert.ExecuteNonQuery();
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
         }
 
         private void DeduzirSaldoCarteira(int idCarteira, Decimal valorTotalCompra)
@@ -134,38 +219,6 @@ namespace FunctionApp2
             {
                 throw ex;
             }
-
-            /*
-             public void InsertExample()
-            {
-                using (SqlConnection connection = new SqlConnection(connectionString))
-                {
-                    string sql = "INSERT INTO SuaTabela (Coluna1, Coluna2) VALUES (@Value1, @Value2);";
-                    using (SqlCommand command = new SqlCommand(sql, connection))
-                    {
-                        command.Parameters.AddWithValue("@Value1", valor1);
-                        command.Parameters.AddWithValue("@Value2", valor2);
-                        connection.Open();
-                        command.ExecuteNonQuery();
-                    }
-                }
-            }
-
-            public void UpdateExample()
-            {
-                using (SqlConnection connection = new SqlConnection(connectionString))
-                {
-                    string sql = "UPDATE SuaTabela SET Coluna1 = @NovoValor WHERE Coluna2 = @ValorAntigo;";
-                    using (SqlCommand command = new SqlCommand(sql, connection))
-                    {
-                        command.Parameters.AddWithValue("@NovoValor", novoValor);
-                        command.Parameters.AddWithValue("@ValorAntigo", valorAntigo);
-                        connection.Open();
-                        command.ExecuteNonQuery();
-                    }
-                }
-            }
-             */
         }
     }
 }
