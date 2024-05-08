@@ -2,15 +2,10 @@ using Azure.Messaging.ServiceBus;
 using FunctionApp2.Objetos;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
-using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using static System.Net.Mime.MediaTypeNames;
+using System.IO.Pipelines;
 
 namespace FunctionApp2
 {
@@ -39,73 +34,105 @@ namespace FunctionApp2
 
             //var teste = JsonConvert.DeserializeObject<Dictionary<string, string>>(message.Body.ToString());
 
-            var teste = message.Body.ToString();
-            var xpto = JObject.Parse(teste);
-            var outra = xpto["message"]  as JObject;
-            ComprarAcoesServiceBus? compra =  outra?.ToObject<ComprarAcoesServiceBus>();
+            var conteudoBruto = message.Body.ToString();
+            var conteudoParseado = JObject.Parse(conteudoBruto);
+            var mensagem = conteudoParseado["message"] as JObject;
 
-
-            if (compra.Carteira.Saldo > 0 && compra.Carteira.Saldo >= compra.Quantidade * compra.Acao.Valor)
+            if (mensagem != null)
             {
-                var valorCompra = compra.Quantidade * compra.Acao.Valor;
-                DeduzirSaldoCarteira(compra.Carteira.Id, valorCompra);
-            }
 
-            //regras:
-            // verificar se possui saldo
-            // verificar se quantidade* preco menor que saldo
-            // 
-            // deduzir o saldo da carteira
-            // update Carteira set Saldo -= @quantidade * @valor where idCarteira = @idCarteira
+                ComprarAcoesServiceBus? compra = mensagem?.ToObject<ComprarAcoesServiceBus>();
 
-            //verificar se a acao está na lista de ativos da carteira
-
-
-            // update Ativos set quantidade += @quantidade, dataCompra = getdate() where id = @id
-            // 
-            // insert into Ativos(idCateira, quantidade, dataCompra, acaoId) values(@idCarteira, @quantidade, getdate(), @acaoId)
-
-
-            using (SqlConnection connection = new SqlConnection(connectionString))
-            {
-                string sql = "SELECT * FROM Usuario;";
-                using (SqlCommand command = new SqlCommand(sql, connection))
+                if (compra != null)
                 {
-                    connection.Open();
-                    using (SqlDataReader reader = command.ExecuteReader())
+                    if (compra.Carteira.Saldo > 0 && compra.Carteira.Saldo >= compra.Quantidade * compra.Acao.Valor)
                     {
-                        while (reader.Read())
-                        {
-                            // Processar os resultados aqui
-                            var nome = reader["Nome"];
+                        Decimal valorTotalCompra = Convert.ToDecimal(compra.Quantidade * compra.Acao.Valor);
+                        DeduzirSaldoCarteira(compra.Carteira.Id, valorTotalCompra);
+                    }
 
-                            _logger.LogInformation("Nome: {nome}", nome);
+                    //regras:
+                    // verificar se possui saldo
+                    // verificar se quantidade* preco menor que saldo
+                    // 
+                    // deduzir o saldo da carteira
+                    // update Carteira set Saldo -= @quantidade * @valor where idCarteira = @idCarteira
+
+                    //verificar se a acao está na lista de ativos da carteira
+
+
+                    // update Ativos set quantidade += @quantidade, dataCompra = getdate() where id = @id
+                    // 
+                    // insert into Ativos(idCateira, quantidade, dataCompra, acaoId) values(@idCarteira, @quantidade, getdate(), @acaoId)
+
+
+                    using (SqlConnection connection = new SqlConnection(connectionString))
+                    {
+                        string sql = "SELECT * FROM Usuario;";
+                        using (SqlCommand command = new SqlCommand(sql, connection))
+                        {
+                            connection.Open();
+                            using (SqlDataReader reader = command.ExecuteReader())
+                            {
+                                while (reader.Read())
+                                {
+                                    // Processar os resultados aqui
+                                    var nome = reader["Nome"];
+
+                                    _logger.LogInformation("Nome: {nome}", nome);
+                                }
+                            }
                         }
                     }
                 }
             }
+            else
+            {
+                // Complete the message
+                await messageActions.CompleteMessageAsync(message);
+            }
 
-            // Complete the message
-            //await messageActions.CompleteMessageAsync(message);
         }
 
-        private void DeduzirSaldoCarteira(int idCarteira, float valorCompra)
+        private void DeduzirSaldoCarteira(int idCarteira, Decimal valorTotalCompra)
         {
-            using (SqlConnection connection = new SqlConnection(connectionString))
+
+            try
             {
-                string sql = "update Carteira set Saldo -= @quantidade * @valor where idCarteira = @idCarteira;";
-                using (SqlCommand command = new SqlCommand(sql, connection))
+                Decimal saldoExistente = 0.0M;
+                string sqlConsulta = "select Saldo from Carteira where id = @idCarteira;";
+                using (SqlConnection cnnConsulta = new SqlConnection(connectionString))
                 {
-                    try
+                    using (SqlCommand cmdConsulta = new SqlCommand(sqlConsulta, cnnConsulta))
                     {
-                        connection.Open();
-                        command.ExecuteNonQuery();
-                    }
-                    catch (Exception ex)
-                    {
-                        throw ex;
+                        cmdConsulta.Parameters.AddWithValue("@idCarteira", idCarteira);
+                        cnnConsulta.Open();
+                        var reader = cmdConsulta.ExecuteReader();
+                        reader.Read();
+                        saldoExistente = reader.GetDecimal("Saldo");
+                        reader.Close();
                     }
                 }
+                var novoSaldo = saldoExistente - valorTotalCompra;
+
+                string sql = "update Carteira set Saldo = @novoSaldo where id = @idCarteira;";
+                using (SqlConnection cnnUpdate = new SqlConnection(connectionString))
+                {
+                    using (SqlCommand cmdUpdate = new SqlCommand(sql, cnnUpdate))
+                    {
+
+                        cmdUpdate.Parameters.AddWithValue("@idCarteira", idCarteira);
+                        cmdUpdate.Parameters.AddWithValue("@novoSaldo", novoSaldo);
+
+                        cnnUpdate.Open();
+                        cmdUpdate.ExecuteNonQuery();
+
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
             }
 
             /*
