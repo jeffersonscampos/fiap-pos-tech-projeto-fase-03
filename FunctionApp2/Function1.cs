@@ -73,12 +73,20 @@ namespace FunctionApp2
 
                             InserirAtivoCarteira(idCarteira.HasValue ? idCarteira.Value : 0, idAcao.HasValue ? idAcao.Value : 0, quantidade.HasValue ? quantidade.Value : 0);
                         }
+
+                        _logger.LogInformation("Processamento da Funcao Concluído com Sucesso.");
+
                     }
+                    else
+                        _logger.LogInformation("compra é nula na mensagem.");
+
                 }
                 else
                 {
                     // Complete the message
                     // await messageActions.CompleteMessageAsync(message);
+
+                    _logger.LogInformation("mensagem é nula.");
                 }
             }
             catch (Exception ex)
@@ -127,10 +135,18 @@ namespace FunctionApp2
                     {
                         cmdConsulta.Parameters.AddWithValue("@idAtivo", idAtivo);
                         cnnConsulta.Open();
-                        var reader = cmdConsulta.ExecuteReader();
-                        reader.Read();
-                        quantidadeExistente = reader.GetInt32("quantidade");
-                        reader.Close();
+                        using (var reader = cmdConsulta.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                quantidadeExistente = reader.GetInt32("quantidade");
+                                reader.Close();
+                            }
+                            else 
+                            {
+                                _logger.LogInformation("Falha em AtualizarAtivoCarteira não encontrou o Ativo {idAtivo} para recuperar a Qtd e Somar a Qtd Comprada.", idAtivo);
+                            }
+                        }
                     }
                 }
                 var novaQuantidade = quantidadeExistente + quantidadeCompra;
@@ -145,7 +161,11 @@ namespace FunctionApp2
                         cmdUpdate.Parameters.AddWithValue("@novaQuantidade", novaQuantidade);
 
                         cnnUpdate.Open();
-                        cmdUpdate.ExecuteNonQuery();
+                        if(cmdUpdate.ExecuteNonQuery() > 0)
+                            _logger.LogInformation("Sucesso em AtualizarAtivoCarteira para o Ativo {idAtivo} com a novaQuantidade {novaQuantidade} ", idAtivo, novaQuantidade);
+
+                        else
+                            _logger.LogInformation("Falha em AtualizarAtivoCarteira para o Ativo {idAtivo} com a novaQuantidade {novaQuantidade} ", idAtivo, novaQuantidade);
 
                     }
                 }
@@ -173,8 +193,10 @@ namespace FunctionApp2
                         cmdInsert.Parameters.AddWithValue("@dataCompra", DateTime.Now);
 
                         cnnInsert.Open();
-                        cmdInsert.ExecuteNonQuery();
-
+                        if(cmdInsert.ExecuteNonQuery() > 0)
+                            _logger.LogInformation("Sucesso em InserirAtivoCarteira para o Carteira {idCarteira} Ação {idAcao} Quantidade{quantidade} ", idCarteira, idAcao, quantidade);
+                        else
+                            _logger.LogInformation("Falha em InserirAtivoCarteira para o Carteira {idCarteira} Ação {idAcao} Quantidade{quantidade} ", idCarteira, idAcao, quantidade);
                     }
                 }
             }
@@ -197,11 +219,20 @@ namespace FunctionApp2
                     {
                         cmdConsulta.Parameters.AddWithValue("@idCarteira", idCarteira);
                         cnnConsulta.Open();
-                        var reader = cmdConsulta.ExecuteReader();
-                        reader.Read();
-                        saldoExistente = reader.GetDecimal("Saldo");
-                        reader.Close();
+                        using (var reader = cmdConsulta.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                saldoExistente = reader.GetDecimal("Saldo");
+                                reader.Close();
+                            }
+                            else 
+                            {
+                                _logger.LogInformation("Falha em DeduzirSaldoCarteira não encontrou a Carteira {idCarteira} para recuperar o Saldo. ", idCarteira);
+                            }
+                        }
                     }
+
                 }
                 var novoSaldo = saldoExistente - valorTotalCompra;
 
@@ -215,14 +246,17 @@ namespace FunctionApp2
                         cmdUpdate.Parameters.AddWithValue("@novoSaldo", novoSaldo);
 
                         cnnUpdate.Open();
-                        cmdUpdate.ExecuteNonQuery();
+                        if(cmdUpdate.ExecuteNonQuery() > 0)
+                            _logger.LogInformation("Sucesso em DeduzirSaldoCarteira idCarteira {idCarteira}  e novoSaldo {novoSaldo}. ", idCarteira, novoSaldo);
+                        else
+                            _logger.LogInformation("Falha em DeduzirSaldoCarteira idCarteira {idCarteira}  e novoSaldo {novoSaldo}. ", idCarteira, novoSaldo);
 
                     }
                 }
             }
             catch (Exception ex)
             {
-                throw ex;                
+                throw ex;
             }
         }
     }
