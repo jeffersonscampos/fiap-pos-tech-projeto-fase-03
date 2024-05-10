@@ -80,7 +80,7 @@ namespace FunctionApp2
             else
             {
                 // Complete the message
-                await messageActions.CompleteMessageAsync(message);
+                // await messageActions.CompleteMessageAsync(message);
             }
 
         }
