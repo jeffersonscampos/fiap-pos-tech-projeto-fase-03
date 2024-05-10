@@ -26,61 +26,66 @@ namespace FunctionApp2
             ServiceBusReceivedMessage message,
             ServiceBusMessageActions messageActions)
         {
-            _logger.LogInformation("Message ID: {id}", message.MessageId);
-            _logger.LogInformation("Message Body: {body}", message.Body);
-            _logger.LogInformation("Message Content-Type: {contentType}", message.ContentType);
-
-            //var primeira = Encoding.UTF8.GetString(message.Body);
-
-            //var teste = JsonConvert.DeserializeObject<Dictionary<string, string>>(message.Body.ToString());
-
-            var conteudoBruto = message.Body.ToString();
-            var conteudoParseado = JObject.Parse(conteudoBruto);
-            var mensagem = conteudoParseado["message"] as JObject;
-
-            if (mensagem != null)
+            try
             {
+                _logger.LogInformation("Message ID: {id}", message.MessageId);
+                _logger.LogInformation("Message Body: {body}", message.Body);
+                _logger.LogInformation("Message Content-Type: {contentType}", message.ContentType);
 
-                ComprarAcoesServiceBus? compra = mensagem?.ToObject<ComprarAcoesServiceBus>();
+                var conteudoBruto = message.Body.ToString();
+                var conteudoParseado = JObject.Parse(conteudoBruto);
+                var mensagem = conteudoParseado["message"] as JObject;
 
-                if (compra != null)
+                if (mensagem != null)
                 {
-                    
-                    // verificar se possui saldo e se quantidade* preco menor que saldo
-                    if (compra.Carteira.Saldo > 0 && compra.Carteira.Saldo >= compra.Quantidade * compra.Acao.Valor)
+
+                    ComprarAcoesServiceBus? compra = mensagem?.ToObject<ComprarAcoesServiceBus>();
+
+                    if (compra != null)
                     {
-                        Decimal valorTotalCompra = Convert.ToDecimal(compra.Quantidade * compra.Acao.Valor);
-                        DeduzirSaldoCarteira(compra.Carteira.Id, valorTotalCompra);
+
+                        // verificar se possui saldo e se quantidade* preco menor que saldo
+                        if (compra.Carteira.Saldo > 0 && compra.Carteira.Saldo >= compra.Quantidade * compra.Acao.Valor)
+                        {
+                            Decimal valorTotalCompra = Convert.ToDecimal(compra.Quantidade * compra.Acao.Valor);
+                            DeduzirSaldoCarteira(compra.Carteira.Id, valorTotalCompra);
+                        }
+
+                        //verificar se a acao está na lista de ativos da carteira
+                        var ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
+                        int? quantidade = compra?.Quantidade;
+
+                        // TODO: codigo comentado apenas de teste para validar a inserção "InserirAtivoCarteira".
+                        // if (ativoCarteira?.Id == 8) 
+                        // {
+                        //     DeletarAtivoCarteiraParaTeste(ativoCarteira.Id);
+                        //     ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
+                        // }
+
+                        if (ativoCarteira != null)
+                        {
+                            AtualizarAtivoCarteira(ativoCarteira.Id, quantidade.HasValue ? quantidade.Value : 0);
+                        }
+                        else
+                        {
+                            int? idAcao = compra?.Acao?.Id;
+                            int? idCarteira = compra?.Carteira?.Id;
+
+                            InserirAtivoCarteira(idCarteira.HasValue ? idCarteira.Value : 0, idAcao.HasValue ? idAcao.Value : 0, quantidade.HasValue ? quantidade.Value : 0);
+                        }
                     }
-
-                    //verificar se a acao está na lista de ativos da carteira
-                    var ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
-                    int? quantidade = compra?.Quantidade;
-
-                    // TODO: codigo comentado apenas de teste para validar a inserção "InserirAtivoCarteira".
-                    // if (ativoCarteira?.Id == 8) 
-                    // {
-                    //     DeletarAtivoCarteiraParaTeste(ativoCarteira.Id);
-                    //     ativoCarteira = compra?.Carteira?.Acoes?.FirstOrDefault(item => item.Acao.Id == compra.Acao.Id);
-                    // }
-
-                    if (ativoCarteira != null)
-                    {
-                        AtualizarAtivoCarteira(ativoCarteira.Id, quantidade.HasValue ? quantidade.Value : 0);
-                    }
-                    else 
-                    {
-                        int? idAcao = compra?.Acao?.Id;
-                        int? idCarteira = compra?.Carteira?.Id;
-
-                        InserirAtivoCarteira(idCarteira.HasValue ? idCarteira.Value : 0, idAcao.HasValue ? idAcao.Value : 0, quantidade.HasValue ? quantidade.Value : 0);
-                    }                    
+                }
+                else
+                {
+                    // Complete the message
+                    // await messageActions.CompleteMessageAsync(message);
                 }
             }
-            else
+            catch (Exception ex)
             {
-                // Complete the message
-                // await messageActions.CompleteMessageAsync(message);
+                //throw;
+                _logger.LogWarning("Exception Message: {StackTraMessagece}", ex?.Message);
+                _logger.LogWarning("Exception StackTrace: {StackTrace}", ex?.StackTrace?.ToString());
             }
 
         }
@@ -217,7 +222,7 @@ namespace FunctionApp2
             }
             catch (Exception ex)
             {
-                throw ex;
+                throw ex;                
             }
         }
     }
