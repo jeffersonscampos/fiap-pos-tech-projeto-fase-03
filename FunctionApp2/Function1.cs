@@ -181,7 +181,7 @@ namespace FunctionApp2
             // insert into Ativos(idCateira, quantidade, dataCompra, acaoId) values(@idCarteira, @quantidade, getdate(), @acaoId)
             try
             {
-                string sqlInsert = "insert into Ativos (IdCarteira, IdAcao, Quantidade, DataCompra) values (@idCarteira, @idAcao, @quantidade, @dataCompra);";
+                string sqlInsert = "insert into Ativos (IdCarteira, AcaoId, Quantidade, DataCompra) values (@idCarteira, @idAcao, @quantidade, @dataCompra);";
                 using (SqlConnection cnnInsert = new SqlConnection(connectionString))
                 {
                     using (SqlCommand cmdInsert = new SqlCommand(sqlInsert, cnnInsert))
